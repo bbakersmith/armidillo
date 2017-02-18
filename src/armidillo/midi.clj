@@ -29,19 +29,30 @@
       (>!! (:buffer l) event))))
 
 
+(def ^:private note-names
+  [:c :c# :d :d# :e :f :f# :g :g# :a :a# :b])
+
+
 (defn ^:private assoc-event-metadata [event timestamp]
-  (assoc event
-         :time timestamp
-         ;; http://www.midimountain.com/midi/midi_status.htm
-         :type (case (:cmd event)
-                 128 :note-off
-                 144 :note-on
-                 160 :poly-aftertouch
-                 176 :control-change
-                 192 :program-change
-                 224 :pitch-wheel
-                 240 :sysex
-                 :unknown)))
+  (let [octave (int (- (/ (:note event) (count note-names)) 2))
+        octave-note (mod (:note event) (count note-names))
+        note-name (get note-names octave-note)
+        ;; http://www.midimountain.com/midi/midi_status.htm
+        type_ (case (:cmd event)
+                128 :note-off
+                144 :note-on
+                160 :poly-aftertouch
+                176 :control-change
+                192 :program-change
+                224 :pitch-wheel
+                240 :sysex
+                :unknown)]
+    (assoc event
+           :note-name note-name
+           :octave octave
+           :octave-note octave-note
+           :time timestamp
+           :type type_)))
 
 
 (defn ^:private midi-handler

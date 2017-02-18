@@ -29,5 +29,9 @@
   (boot-test/test))
 
 
+(deftask autotest []
+  (comp (watch) (test)))
+
+
 (deftask build []
   (comp (aot) (pom) (jar) (install)))

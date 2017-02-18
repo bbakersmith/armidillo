@@ -61,15 +61,35 @@
     ;; it treats the latter case like banks for a 16 pad kit
     :handler test-handler})
 
-  (#'mid/midi-handler {:chan 5 :vel 50} 00000)
-  (#'mid/midi-handler {:chan 5 :vel 50} 11111)
-  (#'mid/midi-handler {:chan 5 :vel 0} 22222)
-  (#'mid/midi-handler {:chan 10 :vel 50} 33333)
+  (#'mid/midi-handler {:chan 5 :vel 50 :note 36} 00000)
+  (#'mid/midi-handler {:chan 5 :vel 50 :note 36} 11111)
+  (#'mid/midi-handler {:chan 5 :vel 0 :note 36} 22222)
+  (#'mid/midi-handler {:chan 10 :vel 50 :note 36} 33333)
 
   (Thread/sleep 100)
 
   (is (= 2 (count @test-device-1-events)))
   (is (= [00000 11111] (map :time @test-device-1-events))))
+
+
+(deftest assoc-event-metadata
+  (let [event {:chan 1 :vel 50 :note 24 :cmd 144}
+        event2 (assoc event :note 87)
+        timestamp 12345]
+    (is (= (assoc event
+                  :time timestamp
+                  :type :note-on
+                  :note-name :c
+                  :octave 0
+                  :octave-note 0)
+           (#'mid/assoc-event-metadata event timestamp)))
+    (is (= (assoc event2
+                  :time timestamp
+                  :type :note-on
+                  :note-name :d#
+                  :octave 5
+                  :octave-note 3)
+           (#'mid/assoc-event-metadata event2 timestamp)))))
 
 
 (deftest listener-set-filter
@@ -85,7 +105,7 @@
     :handler test-handler})
 
   (doseq [cmd [144 128 999 144]]
-    (#'mid/midi-handler {:chan 5 :vel 50 :cmd cmd} 00000))
+    (#'mid/midi-handler {:chan 5 :vel 50 :cmd cmd :note 36} 00000))
 
   (Thread/sleep 100)
 
