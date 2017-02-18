@@ -2,7 +2,7 @@
   "Non-blocking buffered and filtered MIDI listeners."
   (:require [armidillo.log]
             [clojure.core.async :refer [>!! >! <!! <!] :as a]
-            [midi :as m]
+            [overtone.midi :as m]
             [taoensso.timbre :as log]))
 
 
@@ -58,7 +58,7 @@
            :type type_)))
 
 
-(defn ^:private clj-midi-handler
+(defn ^:private midi-clj-handler
   [event timestamp]
   (let [enriched-event (assoc-event-metadata event timestamp)]
     (doseq [[id l] @listeners]
@@ -79,7 +79,7 @@
   (if-let [in (m/midi-in)]
     (do
       (reset! input in)
-      (m/midi-handle-events @input clj-midi-handler))
+      (m/midi-handle-events @input midi-clj-handler))
     (log/error "No MIDI device found.")))
 
 

@@ -5,7 +5,7 @@
                  [adzerk/boot-test "1.1.1" :scope "test"]
                  [com.taoensso/timbre "4.8.0"]
                  [org.clojure/core.async "0.2.374"]
-                 [overtone/midi-clj "0.1"]])
+                 [overtone/midi-clj "0.5.0"]])
 
 
 (require '[adzerk.boot-test :as boot-test])
