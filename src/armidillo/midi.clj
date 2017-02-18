@@ -34,7 +34,9 @@
 
 
 (defn ^:private assoc-event-metadata [event timestamp]
-  (let [octave (int (- (/ (:note event) (count note-names)) 2))
+  (let [;; midi channels should start at 1 not 0
+        chan (inc (:chan event))
+        octave (int (- (/ (:note event) (count note-names)) 2))
         octave-note (mod (:note event) (count note-names))
         note-name (get note-names octave-note)
         ;; http://www.midimountain.com/midi/midi_status.htm
@@ -48,6 +50,7 @@
                 240 :sysex
                 :unknown)]
     (assoc event
+           :chan chan
            :note-name note-name
            :octave octave
            :octave-note octave-note
@@ -85,7 +88,8 @@
   ([]
    (doseq [[id _] @midi-listeners] (midi-stop id)))
   ([id]
-   (a/close! (:buffer (id @midi-listeners)))))
+   (a/close! (:buffer (id @midi-listeners)))
+   (swap! midi-listeners assoc-in [id :status] :stopped)))
 
 
 ;; TODO doc
@@ -96,13 +100,15 @@
    (midi-stop id)
    (swap! midi-listeners assoc-in [id :buffer] (create-midi-buffer))
    (when (nil? @midi-in) (midi-select))
-   (create-midi-consumer (id @midi-listeners))))
+   (create-midi-consumer (id @midi-listeners))
+   (swap! midi-listeners assoc-in [id :status] :started)))
 
 
 (def ^:private default-listener-params
   {:chan nil
    :device nil
-   :filter #{:note-on :note-off}})
+   :filter #{:note-on :note-off}
+   :status :stopped})
 
 
 ;; TODO doc
@@ -144,4 +150,11 @@
 ;; TODO show the stop / start state of each listener
 ;; optionally allow filtering on stopped / started
 (defn list-listeners []
-  (keys @midi-listeners))
+  (into {} (map (fn [[k v]] [k (:status v)]) @midi-listeners)))
+
+
+;; TODO doc
+(defn remove-listener
+  "Stop a listener and forget about it." [id]
+  (midi-stop id)
+  (swap! midi-listeners dissoc id))

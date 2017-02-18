@@ -49,6 +49,21 @@
   (is (= 2 @midi-device-select)))
 
 
+(deftest create-and-start-stop-listener
+  (mid/listener :test-listener-1 {:handler test-handler})
+  (mid/listener :test-listener-2 {:handler test-handler})
+  (is (= {:test-listener-1 :started
+          :test-listener-2 :started}
+         (mid/list-listeners)))
+  (mid/midi-stop :test-listener-2)
+  (is (= {:test-listener-1 :started
+          :test-listener-2 :stopped}
+         (mid/list-listeners)))
+  (mid/remove-listener :test-listener-2)
+  (is (= {:test-listener-1 :started}
+         (mid/list-listeners))))
+
+
 (deftest listener-works
   (mid/listener
    :test-listener
@@ -61,10 +76,10 @@
     ;; it treats the latter case like banks for a 16 pad kit
     :handler test-handler})
 
-  (#'mid/midi-handler {:chan 5 :vel 50 :note 36} 00000)
-  (#'mid/midi-handler {:chan 5 :vel 50 :note 36} 11111)
-  (#'mid/midi-handler {:chan 5 :vel 0 :note 36} 22222)
-  (#'mid/midi-handler {:chan 10 :vel 50 :note 36} 33333)
+  (#'mid/midi-handler {:chan 4 :vel 50 :note 36} 00000)
+  (#'mid/midi-handler {:chan 4 :vel 50 :note 36} 11111)
+  (#'mid/midi-handler {:chan 4 :vel 0 :note 36} 22222)
+  (#'mid/midi-handler {:chan 9 :vel 50 :note 36} 33333)
 
   (Thread/sleep 100)
 
@@ -73,10 +88,11 @@
 
 
 (deftest assoc-event-metadata
-  (let [event {:chan 1 :vel 50 :note 24 :cmd 144}
+  (let [event {:chan 0 :vel 50 :note 24 :cmd 144}
         event2 (assoc event :note 87)
         timestamp 12345]
     (is (= (assoc event
+                  :chan 1
                   :time timestamp
                   :type :note-on
                   :note-name :c
@@ -84,6 +100,7 @@
                   :octave-note 0)
            (#'mid/assoc-event-metadata event timestamp)))
     (is (= (assoc event2
+                  :chan 1
                   :time timestamp
                   :type :note-on
                   :note-name :d#
@@ -105,7 +122,7 @@
     :handler test-handler})
 
   (doseq [cmd [144 128 999 144]]
-    (#'mid/midi-handler {:chan 5 :vel 50 :cmd cmd :note 36} 00000))
+    (#'mid/midi-handler {:chan 4 :vel 50 :cmd cmd :note 36} 00000))
 
   (Thread/sleep 100)
 
@@ -133,7 +150,7 @@
 
   ;;            N  1  1  2  2  3  3  N
   (doseq [note [35 36 51 52 67 68 83 84]]
-    (#'mid/midi-handler {:chan 5 :vel 50 :note note :cmd 144} 00000))
+    (#'mid/midi-handler {:chan 4 :vel 50 :note note :cmd 144} 00000))
 
   (Thread/sleep 100)
 
