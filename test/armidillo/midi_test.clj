@@ -28,8 +28,8 @@
 (defn midi-fixture [test-fn]
   (reset! midi-device-select 0)
   (reset! test-device-1-events [])
-  (reset! @#'mid/midi-listeners nil)
-  (reset! @#'mid/midi-in nil)
+  (reset! @#'mid/listeners nil)
+  (reset! @#'mid/input nil)
   ;; mock midi-clj so test can call event handler directly
   (with-redefs [m/midi-in #(swap! midi-device-select inc)
                 m/midi-handle-events (constantly nil)]
@@ -45,7 +45,7 @@
   (mid/listener :test-listener {:handler test-handler})
   (is (= 1 @midi-device-select))
   ;; unless re-selection is explicitly requested
-  (mid/midi-select)
+  (mid/input-select)
   (is (= 2 @midi-device-select)))
 
 
@@ -55,7 +55,7 @@
   (is (= {:test-listener-1 :started
           :test-listener-2 :started}
          (mid/list-listeners)))
-  (mid/midi-stop :test-listener-2)
+  (mid/stop :test-listener-2)
   (is (= {:test-listener-1 :started
           :test-listener-2 :stopped}
          (mid/list-listeners)))
@@ -76,10 +76,10 @@
     ;; it treats the latter case like banks for a 16 pad kit
     :handler test-handler})
 
-  (#'mid/midi-handler {:chan 4 :vel 50 :note 36} 00000)
-  (#'mid/midi-handler {:chan 4 :vel 50 :note 36} 11111)
-  (#'mid/midi-handler {:chan 4 :vel 0 :note 36} 22222)
-  (#'mid/midi-handler {:chan 9 :vel 50 :note 36} 33333)
+  (#'mid/clj-midi-handler {:chan 4 :vel 50 :note 36} 00000)
+  (#'mid/clj-midi-handler {:chan 4 :vel 50 :note 36} 11111)
+  (#'mid/clj-midi-handler {:chan 4 :vel 0 :note 36} 22222)
+  (#'mid/clj-midi-handler {:chan 9 :vel 50 :note 36} 33333)
 
   (Thread/sleep 100)
 
@@ -122,7 +122,7 @@
     :handler test-handler})
 
   (doseq [cmd [144 128 999 144]]
-    (#'mid/midi-handler {:chan 4 :vel 50 :cmd cmd :note 36} 00000))
+    (#'mid/clj-midi-handler {:chan 4 :vel 50 :cmd cmd :note 36} 00000))
 
   (Thread/sleep 100)
 
@@ -150,7 +150,7 @@
 
   ;;            N  1  1  2  2  3  3  N
   (doseq [note [35 36 51 52 67 68 83 84]]
-    (#'mid/midi-handler {:chan 4 :vel 50 :note note :cmd 144} 00000))
+    (#'mid/clj-midi-handler {:chan 4 :vel 50 :note note :cmd 144} 00000))
 
   (Thread/sleep 100)
 

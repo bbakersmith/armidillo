@@ -6,14 +6,14 @@
             [taoensso.timbre :as log]))
 
 
-(declare midi-stop)
+(declare stop)
 
 
-(def ^:private midi-listeners (atom {}))
-(def ^:private midi-in (atom nil))
+(def ^:private listeners (atom {}))
+(def ^:private input (atom nil))
 
 
-(defn ^:private create-midi-buffer []
+(defn ^:private create-listener-buffer []
   (let [number-of-events-buffered 8]
     (a/chan (a/sliding-buffer number-of-events-buffered))))
 
@@ -58,50 +58,50 @@
            :type type_)))
 
 
-(defn ^:private midi-handler
+(defn ^:private clj-midi-handler
   [event timestamp]
   (let [enriched-event (assoc-event-metadata event timestamp)]
-    (doseq [[id l] @midi-listeners]
+    (doseq [[id l] @listeners]
       (apply-listener l enriched-event))))
 
 
-(defn ^:private create-midi-consumer [l]
+(defn ^:private create-listener-consumer [l]
   (a/go
    (loop []
-     (when-let [midi-event (<! (:buffer l))]
-       ((:handler l) (:device l) midi-event)
+     (when-let [event (<! (:buffer l))]
+       ((:handler l) (:device l) event)
        (recur)))))
 
 
-(defn midi-select []
-  (when @midi-in
-    (m/midi-handle-events @midi-in (fn [& _])))
+(defn input-select []
+  (when @input
+    (m/midi-handle-events @input (fn [& _])))
   (if-let [in (m/midi-in)]
     (do
-      (reset! midi-in in)
-      (m/midi-handle-events in midi-handler))
+      (reset! input in)
+      (m/midi-handle-events @input clj-midi-handler))
     (log/error "No MIDI device found.")))
 
 
 ;; TODO doc
-(defn midi-stop
+(defn stop
   ([]
-   (doseq [[id _] @midi-listeners] (midi-stop id)))
+   (doseq [[id _] @listeners] (stop id)))
   ([id]
-   (a/close! (:buffer (id @midi-listeners)))
-   (swap! midi-listeners assoc-in [id :status] :stopped)))
+   (a/close! (:buffer (id @listeners)))
+   (swap! listeners assoc-in [id :status] :stopped)))
 
 
 ;; TODO doc
-(defn midi-start
+(defn start
   ([]
-   (doseq [[id _] @midi-listeners] (midi-start id)))
+   (doseq [[id _] @listeners] (start id)))
   ([id]
-   (midi-stop id)
-   (swap! midi-listeners assoc-in [id :buffer] (create-midi-buffer))
-   (when (nil? @midi-in) (midi-select))
-   (create-midi-consumer (id @midi-listeners))
-   (swap! midi-listeners assoc-in [id :status] :started)))
+   (stop id)
+   (swap! listeners assoc-in [id :buffer] (create-listener-buffer))
+   (when (nil? @input) (input-select))
+   (create-listener-consumer (id @listeners))
+   (swap! listeners assoc-in [id :status] :started)))
 
 
 (def ^:private default-listener-params
@@ -114,14 +114,14 @@
 ;; TODO doc
 (defn listener
   [id params]
-  (when (id @midi-listeners)
-    (midi-stop id))
+  (when (id @listeners)
+    (stop id))
   (as-> params |
    (merge default-listener-params |)
-   (assoc | :buffer (create-midi-buffer)
+   (assoc | :buffer (create-listener-buffer)
             :id id)
-   (swap! midi-listeners assoc id |))
-  (midi-start id))
+   (swap! listeners assoc id |))
+  (start id))
 
 
 (def ^:private default-kit-params
@@ -147,14 +147,13 @@
     (listener id (assoc params :handler (bank-handler params)))))
 
 
-;; TODO show the stop / start state of each listener
-;; optionally allow filtering on stopped / started
+;; TODO doc
 (defn list-listeners []
-  (into {} (map (fn [[k v]] [k (:status v)]) @midi-listeners)))
+  (into {} (map (fn [[k v]] [k (:status v)]) @listeners)))
 
 
 ;; TODO doc
 (defn remove-listener
   "Stop a listener and forget about it." [id]
-  (midi-stop id)
-  (swap! midi-listeners dissoc id))
+  (stop id)
+  (swap! listeners dissoc id))
