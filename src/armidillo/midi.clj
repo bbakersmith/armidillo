@@ -1,7 +1,6 @@
 (ns armidillo.midi
   "Non-blocking buffered and filtered MIDI listeners."
-  (:require [armidillo.log]
-            [clojure.core.async :refer [>!! >! <!! <!] :as a]
+  (:require [clojure.core.async :refer [>!! >! <!! <!] :as a]
             [overtone.midi :as m]
             [taoensso.timbre :as log]))
 
@@ -9,13 +8,15 @@
 (declare stop)
 
 
+(log/set-level! :warn)
+
+
 (def ^:private listeners (atom {}))
-(def ^:private input (atom nil))
+(def ^:private device (atom nil))
 
 
-(defn ^:private create-listener-buffer []
-  (let [number-of-events-buffered 8]
-    (a/chan (a/sliding-buffer number-of-events-buffered))))
+(defn ^:private create-listener-buffer [size]
+  (a/chan (a/sliding-buffer size)))
 
 
 (defn ^:private apply-listener [l event]
@@ -26,19 +27,19 @@
                    (= (:chan l) (:chan event)))
                ((:filter l) event-matcher))
       (log/debug "MIDI listener " (:id l) " receives " event)
-      (>!! (:buffer l) event))))
+      (>!! (:buffer l) (merge event (:event l))))))
 
 
-(def ^:private note-names
+(def ^:private note-pitches
   [:c :c# :d :d# :e :f :f# :g :g# :a :a# :b])
 
 
 (defn ^:private assoc-event-metadata [event timestamp]
   (let [;; midi channels should start at 1 not 0
         chan (inc (:chan event))
-        octave (int (- (/ (:note event) (count note-names)) 2))
-        octave-note (mod (:note event) (count note-names))
-        note-name (get note-names octave-note)
+        octave (int (- (/ (:note event) (count note-pitches)) 2))
+        octave-note (mod (:note event) (count note-pitches))
+        pitch (get note-pitches octave-note)
         ;; http://www.midimountain.com/midi/midi_status.htm
         type_ (case (:cmd event)
                 128 :note-off
@@ -51,7 +52,7 @@
                 :unknown)]
     (assoc event
            :chan chan
-           :note-name note-name
+           :pitch pitch
            :octave octave
            :octave-note octave-note
            :time timestamp
@@ -69,22 +70,25 @@
   (a/go
    (loop []
      (when-let [event (<! (:buffer l))]
-       ((:handler l) (:device l) event)
+       ((:handler l) event)
        (recur)))))
 
 
-(defn input-select []
-  (when @input
-    (m/midi-handle-events @input (fn [& _])))
+(defn input
+  "Select a midi input device. This will happen automatically
+   when a listener is defined if one hasn't already been been selected."
+  []
+  (when @device
+    (m/midi-handle-events @device (fn [& _])))
   (if-let [in (m/midi-in)]
     (do
-      (reset! input in)
-      (m/midi-handle-events @input midi-clj-handler))
+      (reset! device in)
+      (m/midi-handle-events @device midi-clj-handler))
     (log/error "No MIDI device found.")))
 
 
-;; TODO doc
 (defn stop
+  "Stop all listeners or a single listener."
   ([]
    (doseq [[id _] @listeners] (stop id)))
   ([id]
@@ -92,21 +96,24 @@
    (swap! listeners assoc-in [id :status] :stopped)))
 
 
-;; TODO doc
 (defn start
+  "Start all listeners or a single listener.
+   If a listener has already been started it will be restarted."
   ([]
    (doseq [[id _] @listeners] (start id)))
   ([id]
    (stop id)
-   (swap! listeners assoc-in [id :buffer] (create-listener-buffer))
-   (when (nil? @input) (input-select))
+   (swap! listeners assoc-in [id :buffer] (create-listener-buffer
+                                           (:buffer-size (id @listeners))))
+   (when (nil? @device) (input))
    (create-listener-consumer (id @listeners))
    (swap! listeners assoc-in [id :status] :started)))
 
 
 (def ^:private default-listener-params
-  {:chan nil
-   :device nil
+  {:buffer-size 8
+   :chan nil
+   :event {}
    :filter #{:note-on :note-off}
    :status :stopped})
 
@@ -118,12 +125,13 @@
     (stop id))
   (as-> params |
    (merge default-listener-params |)
-   (assoc | :buffer (create-listener-buffer)
+   (assoc | :buffer (create-listener-buffer (:buffer-size |))
             :id id)
    (swap! listeners assoc id |))
   (start id))
 
 
+;; TODO implement this as :event listener param?
 (def ^:private default-kit-params
   {:first-note 36
    :bank-size 16})
@@ -131,29 +139,37 @@
 
 (defn ^:private bank-handler
   [params]
-  (fn [device event]
+  (fn [event]
    (when (<= (:first-note params) (:note event))
      (let [relative-note (- (:note event) (:first-note params))
            relative-bank (int (/ relative-note (:bank-size params)))
            bank-note (rem relative-note (:bank-size params))]
        (when-let [b (nth (:banks params) relative-bank nil)]
-         (b device (assoc event :bank-note bank-note)))))))
+         (b (assoc event :bank-note bank-note)))))))
 
 
 ;; TODO doc
 (defn kit
+  "Oh ya know......................................."
   [id user-params]
   (let [params (merge default-kit-params user-params)]
     (listener id (assoc params :handler (bank-handler params)))))
 
 
-;; TODO doc
-(defn list-listeners []
+(defn status
+  "Return a map of all listeners and their status, :started or :stopped."
+  []
   (into {} (map (fn [[k v]] [k (:status v)]) @listeners)))
 
 
-;; TODO doc
-(defn remove-listener
-  "Stop a listener and forget about it." [id]
+(defn forget
+  "Stop a listener and forget about it."
+  [id]
   (stop id)
   (swap! listeners dissoc id))
+
+
+(defn logging
+  "Set the log level to one of :debug :info :warn :error"
+  [id]
+  (log/set-level! id))
