@@ -12,6 +12,13 @@
 (def test-handler-events (atom []))
 
 
+;; clj-midi event channels start at zero
+(def test-event-on
+  {:channel 0 :command :note-on :note 36 :timestamp 10000 :velocity 50})
+(def test-event-off
+  {:channel 0 :command :note-off :note 36 :timestamp 10000 :velocity 0})
+
+
 (defn test-handler [event]
   (swap! test-handler-events conj event))
 
@@ -63,63 +70,44 @@
 (deftest listener-works
   (mid/listener
    :test-listener
-   {:chan 5
+   {:channel 1
     ;; accepts a set of note types, defaulting to #{:note-off :note-on},
     ;; or a predecate fn that takes the event
-    :filter #(pos? (:vel %))
+    :filter #(pos? (:velocity %))
     ;; handler can take either fn or collection of fns,
     ;; it treats the latter case like banks for a 16 pad kit
     :handler test-handler})
 
-  (#'mid/midi-clj-handler {:chan 4 :vel 50 :note 36} 00000)
-  (#'mid/midi-clj-handler {:chan 4 :vel 50 :note 36} 11111)
-  (#'mid/midi-clj-handler {:chan 4 :vel 0 :note 36} 22222)
-  (#'mid/midi-clj-handler {:chan 9 :vel 50 :note 36} 33333)
+  (#'mid/midi-clj-handler (assoc test-event-on :timestamp 10000))
+  (#'mid/midi-clj-handler (assoc test-event-on :timestamp 11111))
+  (#'mid/midi-clj-handler (assoc test-event-off :timestamp 22222))
+  (#'mid/midi-clj-handler (assoc test-event-on
+                                 :channel 9
+                                 :timestamp 33333))
 
   (Thread/sleep 100)
 
   (is (= 2 (count @test-handler-events)))
-  (is (= [00000 11111] (map :time @test-handler-events))))
-
-
-(deftest listener-event-params
-  (let [event {:chan 0 :vel 50 :note 24 :cmd 144}]
-    (mid/listener
-     :test-listener
-     {:handler test-handler
-      :event {:foobar 123
-              :barbaz :other}})
-    (#'mid/midi-clj-handler event 12345)
-    (is (= 123 (:foobar (first @test-handler-events))))
-    (is (= :other (:barbaz (first @test-handler-events))))))
+  (is (= [10000 11111] (map :timestamp @test-handler-events))))
 
 
 (deftest assoc-event-metadata
-  (let [event {:chan 0 :vel 50 :note 24 :cmd 144}
-        event2 (assoc event :note 87)
+  (let [event (#'mid/assoc-event-metadata (assoc test-event-on :note 24))
+        event2 (#'mid/assoc-event-metadata (assoc test-event-on :note 87))
         timestamp 12345]
-    (is (= (assoc event
-                  :chan 1
-                  :time timestamp
-                  :type :note-on
-                  :pitch :c
-                  :octave 0
-                  :octave-note 0)
-           (#'mid/assoc-event-metadata event timestamp)))
-    (is (= (assoc event2
-                  :chan 1
-                  :time timestamp
-                  :type :note-on
-                  :pitch :d#
-                  :octave 5
-                  :octave-note 3)
-           (#'mid/assoc-event-metadata event2 timestamp)))))
+    (is (= :c (:pitch event)))
+    (is (= 0 (:octave event)))
+    (is (= 0 (:octave-note event)))
+
+    (is (= :d# (:pitch event2)))
+    (is (= 5 (:octave event2)))
+    (is (= 3 (:octave-note event2)))))
 
 
 (deftest listener-set-filter
   (mid/listener
    :test-listener
-   {:chan 5
+   {:channel 1
     ;; accepts a set of note types, defaulting to #{:note-off :note-on},
     ;; or a predecate fn that takes the event
     :filter #{:note-on}
@@ -127,20 +115,19 @@
     ;; it treats the latter case like banks for a 16 pad kit
     :handler test-handler})
 
-  (doseq [cmd [144 128 999 144]]
-    (#'mid/midi-clj-handler {:chan 4 :vel 50 :cmd cmd :note 36} 00000))
+  (doseq [command [:note-on :note-off :control-change :note-on]]
+    (#'mid/midi-clj-handler (assoc test-event-on :command command)))
 
   (Thread/sleep 100)
 
   (is (= 2 (count @test-handler-events)))
-  (is (every? (comp (partial = :note-on) :type) @test-handler-events))
-  (is (every? (comp (partial = 144) :cmd) @test-handler-events)))
+  (is (every? (comp (partial = :note-on) :command) @test-handler-events)))
 
 
 (deftest kit-works
   (mid/kit
    :test-kit
-   {:chan 5
+   {:channel 1
     ;; takes a collection of bank fn's which each handle events for values
     ;; 0 - :bank-size
     :banks [(create-test-bank 1) (create-test-bank 2) (create-test-bank 3)]
@@ -154,7 +141,7 @@
 
   ;;            N  1  1  2  2  3  3  N
   (doseq [note [35 36 51 52 67 68 83 84]]
-    (#'mid/midi-clj-handler {:chan 4 :vel 50 :note note :cmd 144} 00000))
+    (#'mid/midi-clj-handler (assoc test-event-on :note note)))
 
   (Thread/sleep 100)
 
