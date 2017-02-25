@@ -13,12 +13,13 @@
          '[codox.boot :as codox])
 
 
-(def version "0.3")
+(def project 'bitsynthesis/armidillo)
+(def version "0.4")
 
 
 (task-options!
  aot {:namespace '#{armidillo.midi}}
- pom {:project 'bitsynthesis/armidillo
+ pom {:project project
       :version version})
 
 
